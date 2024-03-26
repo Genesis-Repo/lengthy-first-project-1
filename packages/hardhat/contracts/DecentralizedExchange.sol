@@ -9,19 +9,36 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 /**
  * @title Decentralized Exchange
- * @dev This contract implements a simple decentralized exchange where users can trade ERC20 tokens.
+ * @dev This contract implements a simple decentralized exchange where users can trade ERC20 tokens with a fee system for the contract owner.
  */
 contract DecentralizedExchange {
     using SafeERC20 for ERC20;
     using SafeMath for uint256;
 
+    // Structure to define an order
     struct Order {
         address trader;
         address tokenAddress;
         uint256 amount;
     }
 
+    // Mapping to store orders with their unique IDs
     mapping(bytes32 => Order) public orderBook;
+
+    // Address of the contract owner
+    address public owner;
+    // Fee percentage to be collected by the contract owner
+    uint256 public feePercentage = 1; // 1% fee
+
+    // Event to log trades
+    event TradeExecuted(address indexed buyer, address indexed seller, uint256 amount, uint256 feeAmount);
+
+    /**
+     * @dev Constructor to set the owner of the contract.
+     */
+    constructor() {
+        owner = msg.sender;
+    }
 
     /**
      * @dev Function to submit a buy limit order.
@@ -63,9 +80,18 @@ contract DecentralizedExchange {
         require(buyToken.balanceOf(address(this)) >= buyOrder.amount, "Insufficient balance for buy order");
         require(sellToken.balanceOf(address(this)) >= sellOrder.amount, "Insufficient balance for sell order");
 
-        buyToken.safeTransfer(sellOrder.trader, buyOrder.amount);
+        // Calculate fee amount
+        uint256 feeAmount = (buyOrder.amount * feePercentage) / 100;
+        
+        // Transfer tokens and fees
+        buyToken.safeTransfer(sellOrder.trader, buyOrder.amount - feeAmount);
         sellToken.safeTransfer(buyOrder.trader, sellOrder.amount);
+        buyToken.safeTransfer(owner, feeAmount);
 
+        // Log the trade
+        emit TradeExecuted(buyOrder.trader, sellOrder.trader, buyOrder.amount, feeAmount);
+
+        // Delete orders from the order book
         delete orderBook[buyOrderId];
         delete orderBook[sellOrderId];
     }
@@ -82,5 +108,14 @@ contract DecentralizedExchange {
         token.safeTransfer(order.trader, order.amount);
 
         delete orderBook[orderId];
+    }
+
+    /**
+     * @dev Function to update the fee percentage by the contract owner.
+     * @param newFeePercentage The new fee percentage to be set.
+     */
+    function updateFeePercentage(uint256 newFeePercentage) external {
+        require(msg.sender == owner, "Only the owner can update the fee percentage");
+        feePercentage = newFeePercentage;
     }
 }
