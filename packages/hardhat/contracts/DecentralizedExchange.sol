@@ -77,23 +77,45 @@ contract DecentralizedExchange {
 
         ERC20 buyToken = ERC20(buyOrder.tokenAddress);
         ERC20 sellToken = ERC20(sellOrder.tokenAddress);
-        require(buyToken.balanceOf(address(this)) >= buyOrder.amount, "Insufficient balance for buy order");
-        require(sellToken.balanceOf(address(this)) >= sellOrder.amount, "Insufficient balance for sell order");
 
-        // Calculate fee amount
-        uint256 feeAmount = (buyOrder.amount * feePercentage) / 100;
-        
-        // Transfer tokens and fees
-        buyToken.safeTransfer(sellOrder.trader, buyOrder.amount - feeAmount);
-        sellToken.safeTransfer(buyOrder.trader, sellOrder.amount);
-        buyToken.safeTransfer(owner, feeAmount);
+        // Validate if there is enough balance for the trade
+        uint256 buyAmount = buyOrder.amount;
+        uint256 sellAmount = sellOrder.amount;
+        uint256 feeAmount = (buyAmount * feePercentage) / 100;
 
-        // Log the trade
-        emit TradeExecuted(buyOrder.trader, sellOrder.trader, buyOrder.amount, feeAmount);
+        if (buyAmount <= sellAmount) {
+            // Buy order amount is less than or equal to sell order amount
+            // Transfer tokens and fees for the partial trade
+            buyToken.safeTransfer(sellOrder.trader, buyAmount - feeAmount);
+            sellToken.safeTransfer(buyOrder.trader, buyAmount);
+            buyToken.safeTransfer(owner, feeAmount);
 
-        // Delete orders from the order book
-        delete orderBook[buyOrderId];
-        delete orderBook[sellOrderId];
+            // Update the sell order with the remaining amount
+            sellOrder.amount -= buyAmount;
+            orderBook[sellOrderId] = sellOrder;
+
+            // Log the trade
+            emit TradeExecuted(buyOrder.trader, sellOrder.trader, buyAmount, feeAmount);
+
+            // Delete the buy order as it's fully executed
+            delete orderBook[buyOrderId];
+        } else {
+            // Buy order amount is greater than sell order amount
+            // Transfer tokens and fees for the full trade
+            buyToken.safeTransfer(sellOrder.trader, sellAmount - feeAmount);
+            sellToken.safeTransfer(buyOrder.trader, sellAmount);
+            buyToken.safeTransfer(owner, feeAmount);
+
+            // Update the buy order with the remaining amount
+            buyOrder.amount -= sellAmount;
+            orderBook[buyOrderId] = buyOrder;
+
+            // Log the trade
+            emit TradeExecuted(buyOrder.trader, sellOrder.trader, sellAmount, feeAmount);
+
+            // Delete the sell order as it's fully executed
+            delete orderBook[sellOrderId];
+        }
     }
 
     /**
